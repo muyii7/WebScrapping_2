@@ -5,6 +5,9 @@ import re
 import pandas as pd
 from datetime import datetime
 import time
+from util import file_names, last_saved_file, db_connect
+
+saved_extracted_data = last_saved_file() #latest saved extracted data file is read
 
 #the marks and spencer url where the data will be scrapped from:
 url_ = 'https://www.marksandspencer.com/l/men/mens-blazers?page='
@@ -27,7 +30,7 @@ def scraped_web(url):
 def extract_data():
     # an empty dataframe that will be used to append the extracted data.
     df = pd.DataFrame({'price_of_item': [''], 'designer': [''], 'product_description': ['']})
-    file_name = datetime.now().strftime('%Y%m%dT%H%M') #file name format
+    file_name = file_names() #file name format is read from util.py
     soups = scraped_web(url_) #the scraped data is read from the scraped_web(url)
     try:
         # Iterate through scrapped data, generate dataframes and combine into a unified dataframe.
@@ -40,10 +43,20 @@ def extract_data():
             description = [item.text for item in descriptions] #the data for description is stacked.
             df = df._append({'price_of_item': price, 'designer': designer, 'product_description': description},ignore_index=True)
             df_ex = df.explode(['designer','price_of_item','product_description'])
-                        
+
     except SyntaxWarning:
         print('data is not availabe')
     #extracted data is written in the local repository called 'staging/' used as a dataLake
     df_ex.to_csv(f'staging/{file_name}.csv', index=False)
     print('file has been staged in dataLake')
 extract_data()
+
+def transform_data(save_file):
+    '''the extracted data that was saved in the local dataLake is read and then transformed for usage in the downstream.'''
+    last_saved = save_file
+    data= pd.read_csv(f'{last_saved}')
+    data = data.dropna(how='all') # rows with empty values are dropped
+    data['date'] = data['designer'].apply([lambda x: datetime.now().strftime('%d-%m-%Y')]) #new column with date is added to df
+    data = data.reindex(columns=['date', 'designer', 'product_description', 'price_of_item']) #the columns are re-arranged to standard
+    print(data)
+transform_data(saved_extracted_data)
